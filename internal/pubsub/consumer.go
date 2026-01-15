@@ -16,7 +16,7 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key, queue
 
 	deliveryChannel, err := ch.Consume(queueName, "", false, false, false, false, nil)
 	if err != nil {
-		return fmt.Errorf("Error creating a channel of delivery: ", err)
+		return fmt.Errorf("Error creating a channel of delivery: %v", err)
 	}
 
 	go func() {

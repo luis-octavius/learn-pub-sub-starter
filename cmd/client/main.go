@@ -20,10 +20,10 @@ func main() {
 		log.Fatal("Error creating the amqp connection: ", err)
 	}
 
-	// ch, err := conn.Channel()
-	// if err != nil {
-	// 	log.Fatal("Error opening channel: ", err)
-	// }
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal("Error opening channel: ", err)
+	}
 
 	defer conn.Close()
 
@@ -35,10 +35,17 @@ func main() {
 	}
 
 	pauseUser := routing.PauseKey + "." + username
+	armyMovesUsername := routing.ArmyMovesPrefix + "." + username
+	armyMovesKey := routing.ArmyMovesPrefix + ".*"
 
 	game := gamelogic.NewGameState(username)
 
 	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, pauseUser, routing.PauseKey, "transient", handlerPause(game))
+	if err != nil {
+		log.Fatal("Error - SubscribeJSON: ", err)
+	}
+
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, armyMovesUsername, armyMovesKey, "transient", handlerMove(game))
 	if err != nil {
 		log.Fatal("Error - SubscribeJSON: ", err)
 	}
@@ -66,6 +73,13 @@ func main() {
 			}
 
 			log.Println("Army move successful: ", armyMove)
+
+			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, armyMovesUsername, armyMove)
+			if err != nil {
+				log.Println("Error publishing the move: ", err)
+			}
+
+			log.Println("Move published successfully")
 			continue
 
 		case "status":
