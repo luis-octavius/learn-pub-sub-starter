@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+	"github.com/luis-octavius/learn-pub-sub-starter/internal/gamelogic"
+	"github.com/luis-octavius/learn-pub-sub-starter/internal/pubsub"
+	"github.com/luis-octavius/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -20,19 +20,17 @@ func main() {
 		log.Fatal("Error creating the amqp connection: ", err)
 	}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal("Error opening channel: ", err)
-	}
-
 	defer conn.Close()
 
-	channel, gameLogs, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, "game_logs", routing.GameLogSlug, "durable")
+	publishCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("Could not create channel: %v", err)
+	}
+
+	_, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", "durable")
 	if err != nil {
 		log.Fatal("Error declaring and binding queue: ", err)
 	}
-
-	fmt.Println("Channel: ", channel, "GameLogs: ", gameLogs)
 
 	fmt.Println("Connection successful")
 
@@ -47,13 +45,13 @@ func main() {
 		firstWord := words[0]
 		if firstWord == "pause" {
 			log.Println("Sending pause...")
-			err = pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+			err = pubsub.PublishJSON(publishCh, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
 			continue
 		}
 
 		if firstWord == "resume" {
 			log.Println("Sending resume...")
-			err = pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+			err = pubsub.PublishJSON(publishCh, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
 			continue
 		}
 

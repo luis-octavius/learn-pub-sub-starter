@@ -3,10 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
-	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
+	"github.com/luis-octavius/learn-pub-sub-starter/internal/gamelogic"
+	"github.com/luis-octavius/learn-pub-sub-starter/internal/pubsub"
+	"github.com/luis-octavius/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -34,18 +35,19 @@ func main() {
 		log.Fatal("Error calling ClientWelcome: ", err)
 	}
 
-	pauseUser := routing.PauseKey + "." + username
-	armyMovesUsername := routing.ArmyMovesPrefix + "." + username
-	armyMovesKey := routing.ArmyMovesPrefix + ".*"
-
 	game := gamelogic.NewGameState(username)
 
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, pauseUser, routing.PauseKey, "transient", handlerPause(game))
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+game.GetUsername(), routing.PauseKey, "transient", handlerPause(game))
 	if err != nil {
 		log.Fatal("Error - SubscribeJSON: ", err)
 	}
 
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, armyMovesUsername, armyMovesKey, "transient", handlerMove(game))
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+game.GetUsername(), routing.ArmyMovesPrefix+".*", "transient", handlerMove(game, ch))
+	if err != nil {
+		log.Fatal("Error - SubscribeJSON: ", err)
+	}
+
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", "durable", handlerWar(game, ch))
 	if err != nil {
 		log.Fatal("Error - SubscribeJSON: ", err)
 	}
@@ -66,17 +68,16 @@ func main() {
 			log.Println("Success spawning units")
 			continue
 		case "move":
-			armyMove, err := game.CommandMove(words)
+			mv, err := game.CommandMove(words)
 			if err != nil {
 				log.Println("Error in move command, possibly bad input: ", err)
 				continue
 			}
 
-			log.Println("Army move successful: ", armyMove)
-
-			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, armyMovesUsername, armyMove)
+			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+mv.Player.Username, mv)
 			if err != nil {
 				log.Println("Error publishing the move: ", err)
+				continue
 			}
 
 			log.Println("Move published successfully")
@@ -106,4 +107,17 @@ func main() {
 	// <-signalChan
 	//
 	fmt.Printf("\nEnding connection and closing...\n")
+}
+
+func publishGameLog(publishCh *amqp.Channel, username, msg string) error {
+	return pubsub.PublishGob(
+		publishCh,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug+"."+username,
+		routing.GameLog{
+			Username:    username,
+			CurrentTime: time.Now(),
+			Message:     msg,
+		},
+	)
 }

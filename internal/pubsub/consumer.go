@@ -8,7 +8,15 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key, queueType string, handler func(T)) error {
+type Acktype int
+
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
+)
+
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key, queueType string, handler func(T) Acktype) error {
 	ch, _, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
 		return fmt.Errorf("")
@@ -27,8 +35,18 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key, queue
 				log.Fatalf("Error unmarshaling JSON: %v\n", err)
 			}
 
-			handler(data)
-			msg.Ack(false)
+			acktype := handler(data)
+			switch acktype {
+			case Ack:
+				msg.Ack(false)
+				log.Println("Ack")
+			case NackRequeue:
+				msg.Nack(false, true)
+				log.Println("NackRequeue")
+			case NackDiscard:
+				msg.Nack(false, false)
+				log.Println("NackDiscard")
+			}
 		}
 	}()
 
